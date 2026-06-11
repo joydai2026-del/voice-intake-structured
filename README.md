@@ -1,26 +1,24 @@
-# muse-voice
+# voice-intake-structured
 
-> Voice-first music release intake: AI interviews artists about their release in real-time, extracts structured metadata, and queues it for distribution.
+> Voice-first intake agent: AI interviews users in real-time, collects structured data across any field set, and delivers a validated record — no forms, no typing.
 
 [![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![LiveKit](https://img.shields.io/badge/Voice-LiveKit-000?style=flat-square)](https://livekit.io)
 [![Modal](https://img.shields.io/badge/Serverless-Modal-7C3AED?style=flat-square)](https://modal.com)
 [![Tests](https://img.shields.io/badge/tests-113%20passing-brightgreen?style=flat-square)]()
-[![Part of Muse Agents](https://img.shields.io/badge/Part%20of-Muse%20Agents-1a1a1a?style=flat-square)]()
 
-Getting release metadata from artists is slow: emails, forms, back-and-forth. Muse Voice replaces that with a 3-minute voice conversation. The artist talks, the agent listens and asks follow-up questions, and the release record is ready when the call ends.
+Forms are slow and imprecise. This agent replaces them: the user speaks naturally, the agent asks follow-up questions for any missing fields, reads back a summary for confirmation, and produces a validated structured record — all in under 3 minutes.
 
 ---
 
-## Live demo (what the agent actually says)
+## Live demo (actual agent transcript)
 
 ```
-Agent: "Hello, I'm Muse. What is the title and the artist name for this release?"
-Artist: "It's called Sunset Drive, by Sarah Lane."
-Agent: "Got it. Sunset Drive by Sarah Lane. What is the release date?"
+Agent: "What is the title and the name for this record?"
+User:  "It's called Sunset Drive, by Sarah Lane."
+Agent: "Got it — Sunset Drive by Sarah Lane. What is the date?"
 ...
-Agent: "All set. Sunset Drive by Sarah Lane, a single released October 9th, 2026. 
-        Please send your audio and artwork via Telegram."
+Agent: "All set. I have everything I need."
 ```
 
 ---
@@ -29,45 +27,30 @@ Agent: "All set. Sunset Drive by Sarah Lane, a single released October 9th, 2026
 
 ```mermaid
 sequenceDiagram
-    participant A as Artist (browser)
+    participant U as User (browser)
     participant FE as Web Frontend
     participant BE as FastAPI backend (Modal)
     participant LK as LiveKit
-    participant AI as Voice AI (Gemini)
+    participant AI as Voice AI
 
-    A->>FE: Opens intake URL (from Telegram or direct)
-    A->>FE: Taps "Start voice intake"
+    U->>FE: Opens intake URL
+    U->>FE: Taps "Start"
     FE->>BE: POST /voice/sessions/{sid}/token
-    BE->>BE: Auto-dispatch worker subprocess
+    BE->>BE: Auto-dispatch voice worker subprocess
     BE-->>FE: LiveKit JWT
     FE->>LK: Connect audio stream
 
-    loop Intake conversation
-        AI->>A: Question (title, artist, date, genre, performer...)
-        A->>AI: Answer (free speech)
-        AI->>AI: Extract field value, validate, ask next
+    loop Intake interview
+        AI->>U: Question (field by field)
+        U->>AI: Answer (free speech)
+        AI->>AI: Extract value, validate, advance
     end
 
-    AI->>A: Summary read-back + confirmation
-    AI->>A: "All set."
-    BE->>BE: Create structured release record
-    BE->>BE: Queue for distribution handoff
+    AI->>U: Summary read-back
+    AI->>U: "All set."
+    BE->>BE: Emit structured record
+    BE->>BE: Route to downstream handler
 ```
-
----
-
-## Fields collected
-
-| Field | How collected |
-|---|---|
-| Release title | Direct question |
-| Main artist name | Direct question |
-| Release date | Direct question + date parsing |
-| Release type | Classification (single, EP, album) |
-| Primary genre | Direct question |
-| Songwriter | Direct question |
-| Performer(s) | Direct question, multi-value |
-| Producer / Engineer | Direct question |
 
 ---
 
@@ -75,25 +58,39 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    TG["Telegram start URL"] --> FE["Web Frontend\n(browser)"]
-    FE --> BE["FastAPI on Modal\n(serverless, auto-scales to zero)"]
+    URL["Start URL (deep link)"] --> FE["Web Frontend\n(browser)"]
+    FE --> BE["FastAPI on Modal\n(serverless, scales to zero)"]
     BE --> LK["LiveKit\n(real-time audio transport)"]
-    BE --> AI["Gemini Voice AI\n(WebSocket, real-time)"]
+    BE --> AI["Voice AI\n(WebSocket, real-time)"]
     AI --> EXTRACT["Field Extractor\nValidated pydantic model"]
-    EXTRACT --> RECORD["Release Record\n(queued for distribution)"]
-    RECORD --> DIST["Distribution handoff\n(TuneCore / Paperclip)"]
+    EXTRACT --> RECORD["Structured Record\n(any schema)"]
+    RECORD --> HANDLER["Downstream handler\n(queue, webhook, API)"]
 ```
+
+---
+
+## Field collection model
+
+The field schema is config-driven — define the fields you need and the agent asks for them in order, handling re-asks and clarifications automatically.
+
+| Field property | Type | Notes |
+|---|---|---|
+| `key` | string | Stable identifier for the structured record |
+| `label` | string | What the agent calls this field in conversation |
+| `field_type` | text / date / enum / number | Used for validation |
+| `required` | bool | Agent re-asks until satisfied if true |
+| `confirmation_read` | bool | Agent reads back this field in the summary |
 
 ---
 
 ## Implementation status
 
-| Component | Status | Notes |
-|---|---|---|
-| Voice intake v1.2 | Shipped | 113 tests passing, confirmed live in browser |
-| Auto-dispatch worker | Shipped | Worker spawned on session create, not on /token |
-| Cold-start pre-warm | Planned | Reduce 15-22s initial delay to ~0s |
-| Distribution handoff | Planned | Paperclip / TuneCore wiring |
+| Component | Status |
+|---|---|
+| Voice intake v1.2 | Shipped — 113 tests, confirmed live in browser |
+| Auto-dispatch worker | Shipped |
+| Cold-start pre-warm | Planned |
+| Downstream handler wiring | Configurable per deployment |
 
 ---
 
